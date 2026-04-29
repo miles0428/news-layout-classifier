@@ -1,79 +1,90 @@
 # News Layout Classifier
 
-利用樣板比對（Normalized Cross-Correlation）自動分類新聞直播截圖：
+YouTube 新聞直播截圖分類器，自動判斷主播位置：
 
-| 類別   | 說明                          |
-|--------|-------------------------------|
-| `left` | 主播在左，UI 框架在右          |
-| `right`| 主播在右，UI 框架在左          |
-| `other`| 無固定框架（天氣圖、動態圖形）  |
+| 類別    | 說明                     |
+|---------|--------------------------|
+| `left`  | 主播在左，UI 框架在右      |
+| `right` | 主播在右，UI 框架在左      |
+| `other` | 無固定框架（天氣圖、動態圖形）|
 
-**5x80/20 Cross-Validation 準確率：97.2%**（left: 100%, right: 100%, other: 95%）
+**5x80/20 Cross-Validation 準確率：99.78%**（left: 100%, right: 100%, other: 99.6%）
 
 ---
 
 ## 安裝
 
 ```bash
-pip install pillow numpy matplotlib
+pip install git+https://github.com/miles0428/news-layout-classifier.git
 ```
 
-## 快速開始
-
-### 1. 訓練模板
+或 clone 後安裝：
 
 ```bash
-python -m classify.main train \
-  /path/to/left_dir \
-  /path/to/right_dir \
-  /path/to/other_dir \
-  --out templates/my_templates.npz
-```
-
-### 2. 分類圖片目錄
-
-```bash
-python -m classify.main batch \
-  /path/to/input_images \
-  /path/to/output_dir \
-  --templates templates/news_layout_templates.npz
-```
-
-### 3. 單一圖片分類
-
-```bash
-python -m classify.main single image.jpg \
-  --templates templates/news_layout_templates.npz
-```
-
-### 4. Cross-Validation Benchmark
-
-```bash
-python -m classify.main bench \
-  /path/to/left_dir \
-  /path/to/right_dir \
-  /path/to/other_dir \
-  --rounds 5
+git clone https://github.com/miles0428/news-layout-classifier.git
+cd news-layout-classifier
+pip install .
 ```
 
 ---
 
-## 演算法原理
+## Python 直接用（推薦）
 
-1. **樣板建構**：對每個類別的所有圖片計算平均圖（mean image），作為類別模板
-2. **樣板比對**：新圖片與三個模板個別計算 Normalized Cross-Correlation（NCC）
-3. **決策**：
-   - NCC 分數最高者為預測類別
-   - 若最高分與第二高分差距 < `TOLERANCE_MARGIN`（預設 0.05）→ 判定為 `other`
-   - 若最高分 < `MIN_TPL_MATCH`（預設 0.15）→ 判定為 `other`
+```python
+from news_layout import NewsLayoutClassifier
 
-NCC 分數範圍 [-1, +1]，值越高表示與模板越相似。
+clf = NewsLayoutClassifier()          # 自動載入預訓練模板，直接可用
+label = clf.classify("image.jpg")    # left / right / other
+```
+
+進階用法：
+
+```python
+clf = NewsLayoutClassifier(pixel_tol=0.06, min_match=0.35)
+
+label, scores = clf.classify_with_scores("image.jpg")
+print(scores)  # {'left': 0.87, 'right': 0.12}
+```
+
+---
+
+## CLI
+
+```bash
+# 分類目錄
+news-layout batch INPUT_DIR OUTPUT_DIR
+
+# 單一圖片
+news-layout single image.jpg --templates templates.npz
+
+# 評估 benchmark
+news-layout bench LEFT_DIR RIGHT_DIR OTHER_DIR --rounds 5 --verbose
+
+# 訓練（自訂資料）
+news-layout train left_dir right_dir --out my_templates.npz
+```
+
+---
+
+## 演算法
+
+**Pixel-wise Match Ratio（最簡單版本）**
+
+1. 對每個 pixel 計算 `|test - template|`
+2. `|diff| < pixel_tol` → 該 pixel 算「匹配」
+3. Score = 匹配 pixel 比例（越高越像該類別）
+4. 兩個類別的 score 都低於 `min_match` → `other`，否則分數高者勝
+
+**參數：**
+- `pixel_tol = 0.05`：每個 pixel 的容忍差異範圍（在 [0,1] 影像空間）
+- `min_match = 0.30`：低於此分數即判定為 other
+- `active_cols`：只計算邊緣與中央 UI 框架區域（共 31 個欄位）
 
 ---
 
 ## 預訓練模板
 
-已附帶 `templates/news_layout_templates.npz`，使用 189 left + 215 right + 521 other 張圖片訓練。
+已包在 `src/news_layout/templates/news_layout_templates.npz`，`NewsLayoutClassifier()` 實例化時自動載入。
 
 ---
 
@@ -81,14 +92,11 @@ NCC 分數範圍 [-1, +1]，值越高表示與模板越相似。
 
 ```
 news-layout-classifier/
-├── classify/
-│   ├── __init__.py
-│   ├── classifier.py    # 核心分類器
-│   └── main.py           # CLI 入口
-├── templates/
-│   └── news_layout_templates.npz   # 預訓練模板
-├── results/              # 分析結果圖
-├── requirements.txt
-├── .gitignore
+├── pyproject.toml
+├── src/news_layout/
+│   ├── __init__.py              # class + 參數
+│   ├── __main__.py              # CLI 入口
+│   └── templates/
+│       └── news_layout_templates.npz  # 預訓練模板
 └── README.md
 ```
