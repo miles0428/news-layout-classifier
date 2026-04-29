@@ -1,35 +1,35 @@
 # News Layout Classifier
 
-> **公視手語新聞（PTS Sign Language News）** 畫面分類工具。
-> 自動區分三種常見畫面型態。
+> Screen layout classifier for **PTS Sign Language News** (公視手語新聞).
+> Automatically categorizes live stream captures into three layout types.
 
-[YouTube 頻道](https://www.youtube.com/@slnewsptsTaiwan)
-
----
-
-## 專案目標
-
-公視手語新聞的直播截圖可分為三種畫面：
-
-| 類別     | 說明                                      | 範例                                    |
-|----------|-------------------------------------------|----------------------------------------|
-| `left`  | 主播在**左**側，AI 螢幕助理（手語翻譯員）在**右**側 | [示範截圖](#left) |
-| `right` | 主播在**右**側，AI 螢幕助理（手語翻譯員）在**左**側 | [示範截圖](#right) |
-| `other` | 新聞主畫面（主播不在框架內，或無固定版面配置）       | [示範截圖](#other) |
-
-**用途：** 幫助文獻整理、影片分析、或作為後續自動化處理的前處理步驟。
-
-**5x80/20 Cross-Validation 準確率：99.78%**（left: 100%, right: 100%, other: 99.6%）
+[YouTube Channel](https://www.youtube.com/@slnewsptsTaiwan)
 
 ---
 
-## 安裝
+## Project Goal
+
+PTS Sign Language News live stream captures fall into three common layouts:
+
+| Label    | Description                                                     |
+|----------|----------------------------------------------------------------|
+| `left`  | Anchor on the **left**, AI assistant (sign language interpreter) on the **right** |
+| `right` | Anchor on the **right**, AI assistant on the **left**          |
+| `other` | News main frame — no anchor in the standard layout (weather graphics, motion backgrounds, full-screen anchors) |
+
+**Use cases:** literature organization, video analysis, preprocessing for downstream automation tasks.
+
+**Accuracy: 99.78%** (5x80/20 cross-validation, left: 100%, right: 100%, other: 99.6%)
+
+---
+
+## Installation
 
 ```bash
 pip install git+https://github.com/miles0428/news-layout-classifier.git
 ```
 
-或 clone 後安裝：
+Or from a local clone:
 
 ```bash
 git clone https://github.com/miles0428/news-layout-classifier.git
@@ -39,13 +39,13 @@ pip install .
 
 ---
 
-## Python 直接用
+## Quick Start
 
 ```python
 from news_layout import NewsLayoutClassifier
 
-clf = NewsLayoutClassifier()          # 自動載入預訓練模板，直接可用
-label = clf.classify("image.jpg")    # left / right / other
+clf = NewsLayoutClassifier()       # loads built-in templates automatically
+label = clf.classify("image.jpg")  # "left" / "right" / "other"
 ```
 
 ---
@@ -53,54 +53,54 @@ label = clf.classify("image.jpg")    # left / right / other
 ## CLI
 
 ```bash
-# 分類整個目錄
+# Classify a directory (outputs left/, right/, other/ subfolders)
 news-layout batch INPUT_DIR OUTPUT_DIR
 
-# 分類單一圖片
+# Classify a single image
 news-layout single image.jpg
 
-# 測試已分類的資料夾
+# Test on pre-labeled folders
 python test.py ROOT_DIR
 ```
 
 ---
 
-## 演算法
+## Algorithm
 
 **Pixel-wise Match Ratio**
 
-1. 對每個 pixel 計算 `|test - template|`
-2. `|diff| < pixel_tol` → 該 pixel 算「匹配」
-3. Score = 匹配 pixel 比例（越高越像該類別）
-4. 兩個類別的 score 都低於 `min_match` → `other`，否則分數高者勝
+1. For each pixel: compute `|test - template|`
+2. If `|diff| < pixel_tol` → count as "matching"
+3. Score = fraction of matching pixels (higher = better match)
+4. If both scores < `min_match` → `other`; otherwise the higher score wins
 
-**參數（一般不需要改）：**
-- `pixel_tol = 0.05`：每個 pixel 的容忍差異（在 [0,1] 影像空間）
-- `min_match = 0.30`：低於此分數即判定為 other
-- `active_cols`：只計算邊緣與中央 UI 框架區域（共 31 個欄位）
+**Default parameters:**
+- `pixel_tol = 0.05` — per-pixel tolerance (in [0,1] image space)
+- `min_match = 0.30` — score below this is classified as `other`
+- `active_cols` — only edge + central UI frame columns are evaluated (31 columns total)
 
 ---
 
-## 專案結構
+## Project Structure
 
 ```
 news-layout-classifier/
 ├── pyproject.toml
 ├── src/news_layout/
-│   ├── __init__.py                    # class
-│   ├── __main__.py                    # CLI
+│   ├── __init__.py
+│   ├── __main__.py                    # CLI entry point
 │   └── templates/
-│       └── news_layout_templates.npz   # 預訓練模板（189 left + 215 right 張圖）
+│       └── news_layout_templates.npz   # pre-trained templates (189 left + 215 right images)
 └── README.md
 ```
 
 ---
 
-## 資料來源與模板訓練
+## Data & Training
 
-預訓練模板使用 [PTS Sign Language News](https://www.youtube.com/@slnewsptsTaiwan) YouTube 直播截圖人工分類後訓練。
+Pre-trained templates were built from [PTS Sign Language News](https://www.youtube.com/@slnewsptsTaiwan) YouTube live stream captures, manually categorized into `left` / `right` folders.
 
-若要用自己的資料重新訓練：
+To re-train with your own data:
 
 ```bash
 news-layout train left_dir right_dir --out my_templates.npz
@@ -108,12 +108,12 @@ news-layout train left_dir right_dir --out my_templates.npz
 
 ---
 
-## 免責聲明
+## Disclaimer
 
-本專案為**學習與研究目的**開源。
+This project is released for **learning and research purposes only**.
 
-- 模板與模型僅基於公開 YouTube 截圖資料訓練
-- 準確率數據僅代表該特定資料集的表現，不保證在其他資料上的泛化能力
-- 本工具不隸屬於、亦不為公視（ PTS ）或其附屬機構立場背書
-- 用於學術論文發表、教学或任何非商業用途時，請引用本 Repo：
+- Templates and model were trained solely on publicly available YouTube screenshots
+- Accuracy figures are specific to this dataset and do not guarantee generalization to other data
+- This tool is not affiliated with, endorsed by, or representative of PTS (Public Television Service) or any associated institutions
+- When citing in academic papers, teaching materials, or any non-commercial use, please reference this repository:
   > https://github.com/miles0428/news-layout-classifier
