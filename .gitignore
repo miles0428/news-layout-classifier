@@ -15,3 +15,11 @@ env/
 *.zip
 youtube_screenshots/
 results/
+templates/
+utils/
+requirements.txt
+generate_templates.py
+debug_*.py
+*.npz
+*.pdf
+*.txt
