@@ -40,8 +40,6 @@ label = clf.classify("image.jpg")    # left / right / other
 進階用法：
 
 ```python
-clf = NewsLayoutClassifier(pixel_tol=0.06, min_match=0.35)
-
 label, scores = clf.classify_with_scores("image.jpg")
 print(scores)  # {'left': 0.87, 'right': 0.12}
 ```
@@ -51,31 +49,28 @@ print(scores)  # {'left': 0.87, 'right': 0.12}
 ## CLI
 
 ```bash
-# 分類目錄
+# 分類整個目錄（結果分到 left/ right/ other/ 三個子資料夾）
 news-layout batch INPUT_DIR OUTPUT_DIR
 
-# 單一圖片
-news-layout single image.jpg --templates templates.npz
+# 分類單一圖片
+news-layout single image.jpg
 
-# 評估 benchmark
-news-layout bench LEFT_DIR RIGHT_DIR OTHER_DIR --rounds 5 --verbose
-
-# 訓練（自訂資料）
-news-layout train left_dir right_dir --out my_templates.npz
+# 測試已分類的資料夾（輸出正確率）
+python test.py ROOT_DIR
 ```
 
 ---
 
 ## 演算法
 
-**Pixel-wise Match Ratio（最簡單版本）**
+**Pixel-wise Match Ratio**
 
 1. 對每個 pixel 計算 `|test - template|`
 2. `|diff| < pixel_tol` → 該 pixel 算「匹配」
 3. Score = 匹配 pixel 比例（越高越像該類別）
 4. 兩個類別的 score 都低於 `min_match` → `other`，否則分數高者勝
 
-**參數：**
+**參數（一般不需要改）：**
 - `pixel_tol = 0.05`：每個 pixel 的容忍差異範圍（在 [0,1] 影像空間）
 - `min_match = 0.30`：低於此分數即判定為 other
 - `active_cols`：只計算邊緣與中央 UI 框架區域（共 31 個欄位）
@@ -86,6 +81,12 @@ news-layout train left_dir right_dir --out my_templates.npz
 
 已包在 `src/news_layout/templates/news_layout_templates.npz`，`NewsLayoutClassifier()` 實例化時自動載入。
 
+若要自己訓練（用自己的圖片）：
+
+```bash
+news-layout train left_dir right_dir --out my_templates.npz
+```
+
 ---
 
 ## 專案結構
@@ -94,9 +95,10 @@ news-layout train left_dir right_dir --out my_templates.npz
 news-layout-classifier/
 ├── pyproject.toml
 ├── src/news_layout/
-│   ├── __init__.py              # class + 參數
-│   ├── __main__.py              # CLI 入口
+│   ├── __init__.py                    # class（自動載入預訓練模板）
+│   ├── __main__.py                    # CLI
 │   └── templates/
-│       └── news_layout_templates.npz  # 預訓練模板
+│       └── news_layout_templates.npz   # 預訓練模板
+├── test.py                            # 測試腳本（gitignore，不在 repo）
 └── README.md
 ```
