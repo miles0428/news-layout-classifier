@@ -20,8 +20,15 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 DEFAULT_SIZE = 128
-PIXEL_TOL = 0.05       # |diff| < this → match (in [0,1] space)
-MIN_MATCH = 0.30       # score must exceed this to NOT be "other"
+PIXEL_TOL = 0.05
+MIN_MATCH = 0.30
+DEFAULT_ACTIVE_COLS = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 10,
+    73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83,
+    97, 100,
+    120, 121, 122, 123, 124, 125, 126, 127,
+]
+DEFAULT_TEMPLATE = Path(__file__).parent / "templates" / "news_layout_templates.npz"
 
 
 def _match_score(img: np.ndarray, tpl: np.ndarray, col_mask: np.ndarray | None = None,
@@ -42,7 +49,8 @@ class NewsLayoutClassifier:
         size: int = DEFAULT_SIZE,
         pixel_tol: float = PIXEL_TOL,
         min_match: float = MIN_MATCH,
-        active_cols: list[int] | None = None,
+        active_cols: list[int] | None = DEFAULT_ACTIVE_COLS,
+        template: Path | str | None = None,
     ):
         self.size = size
         self.pixel_tol = pixel_tol
@@ -57,8 +65,13 @@ class NewsLayoutClassifier:
             self._col_mask = np.zeros(size, dtype=bool)
             self._col_mask[active_cols] = True
 
-        logger.debug(f"Classifier ready (size={size}, px_tol={pixel_tol}, "
-                     f"min_match={min_match}, cols={active_cols})")
+        # Auto-load pre-trained templates if available
+        template_path = Path(template) if template else DEFAULT_TEMPLATE
+        if template_path.exists():
+            self.load_templates(template_path)
+        else:
+            logger.debug("Classifier ready (size=%d, px_tol=%s, min_match=%s, cols=%s)",
+                         size, pixel_tol, min_match, active_cols)
 
     # ------------------------------------------------------------------
     # Training
