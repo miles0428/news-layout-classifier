@@ -39,7 +39,10 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
 
 def train(args):
-    clf = NewsLayoutClassifier(size=args.resolution)
+    clf = NewsLayoutClassifier(size=args.resolution,
+                                pixel_tol=args.pixel_tol,
+                                min_match=args.min_match,
+                                active_cols=args.active_cols)
     counts = clf.train(
         left_dir=Path(args.left_dir),
         right_dir=Path(args.right_dir),
@@ -72,17 +75,19 @@ def train(args):
 
 def batch(args):
     templates_path = Path(args.templates) if args.templates else None
-    clf = NewsLayoutClassifier(size=args.resolution)
+    clf = NewsLayoutClassifier(size=args.resolution,
+                              pixel_tol=args.pixel_tol,
+                              min_match=args.min_match,
+                              active_cols=args.active_cols)
 
     if templates_path and templates_path.exists():
         clf.load_templates(templates_path)
         logger.info(f"Loaded templates from {templates_path}")
     else:
-        # Build inline templates from labelled subdirs if provided
         if args.left_dir and args.right_dir and args.other_dir:
             clf.train(Path(args.left_dir), Path(args.right_dir), Path(args.other_dir))
         else:
-            logger.error("No templates provided and no --left-dir/--right-dir/--other-dir")
+            logger.error("No --templates and no --left-dir/--right-dir/--other-dir")
             sys.exit(1)
 
     input_dir = Path(args.input_dir)
@@ -142,11 +147,14 @@ def single(args):
     path = Path(args.image_path)
     label, scores = clf.classify_with_scores(path)
     print(f"Result: {label}")
-    print(f"Scores: left={scores['left']:.4f}  right={scores['right']:.4f}  other={scores['other']:.4f}")
+    print(f"Scores: left={scores['left']:.4f}  right={scores['right']:.4f}")
 
 
 def bench(args):
-    clf = NewsLayoutClassifier(size=args.resolution)
+    clf = NewsLayoutClassifier(size=args.resolution,
+                              pixel_tol=args.pixel_tol,
+                              min_match=args.min_match,
+                              active_cols=args.active_cols)
     tpl_L = Path(args.left_dir)
     tpl_R = Path(args.right_dir)
     tpl_O = Path(args.other_dir)
@@ -203,6 +211,10 @@ def main():
     p_train.add_argument("--out", help="Save templates to .npz file")
     p_train.add_argument("--test-dirs", nargs=3, metavar=("L","R","O"), help="Quick self-test dirs")
     p_train.add_argument("--resolution", type=int, default=128)
+    p_train.add_argument("--pixel-tol", type=float, default=0.05)
+    p_train.add_argument("--min-match", type=float, default=0.30)
+    p_train.add_argument("--active-cols", type=int, nargs="+", default=None,
+                         help="List of column indices to use for matching")
 
     p_batch = sub.add_parser("batch", help="Classify a directory")
     p_batch.add_argument("input_dir",  type=Path)
@@ -213,6 +225,9 @@ def main():
     p_batch.add_argument("--other-dir")
     p_batch.add_argument("--move", action="store_true")
     p_batch.add_argument("--resolution", type=int, default=128)
+    p_batch.add_argument("--pixel-tol", type=float, default=0.05)
+    p_batch.add_argument("--min-match", type=float, default=0.30)
+    p_batch.add_argument("--active-cols", type=int, nargs="+", default=None)
 
     p_single = sub.add_parser("single", help="Classify one image")
     p_single.add_argument("image_path", type=Path)
@@ -224,6 +239,9 @@ def main():
     p_bench.add_argument("other_dir")
     p_bench.add_argument("--rounds", type=int, default=5)
     p_bench.add_argument("--resolution", type=int, default=128)
+    p_bench.add_argument("--pixel-tol", type=float, default=0.05)
+    p_bench.add_argument("--min-match", type=float, default=0.30)
+    p_bench.add_argument("--active-cols", type=int, nargs="+", default=None)
 
     args = ap.parse_args()
 

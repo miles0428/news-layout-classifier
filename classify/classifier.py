@@ -1,13 +1,11 @@
 """
-Template-based news layout classifier.
+Template-based news layout classifier — pixel-wise match ratio (simplest version).
 
-Uses normalized cross-correlation with class-mean templates:
-  - "left"  : anchor on LEFT  (UI frame on RIGHT)
-  - "right" : anchor on RIGHT (UI frame on LEFT)
-  - "other" : generic news footage (weather graphics, motion graphics)
+For each pixel in active columns:
+    if |test[p] - template[p]| < pixel_tol → count as "matching"
 
-Templates are built from training images at SIZE x SIZE resolution.
-A tolerance gap between best and second-best score triggers "other".
+Score = fraction of matching pixels (higher = better match).
+Classification: higher score wins, but if both scores < min_match → other.
 """
 
 from __future__ import annotations
@@ -21,57 +19,46 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Tunable parameters
-# ---------------------------------------------------------------------------
-DEFAULT_SIZE = 128            # resolution for template matching
-TOLERANCE_MARGIN = 0.05       # min score gap (best - 2nd) to avoid "other"
-MIN_TPL_MATCH = 0.15          # absolute score below this -> "other"
-# ---------------------------------------------------------------------------
+DEFAULT_SIZE = 128
+PIXEL_TOL = 0.05       # |diff| < this → match (in [0,1] space)
+MIN_MATCH = 0.30       # score must exceed this to NOT be "other"
 
 
-def _corr(img_flat: np.ndarray, tpl_flat: np.ndarray) -> float:
-    """Normalized cross-correlation between two flat arrays."""
-    i_c = img_flat - img_flat.mean()
-    t_c = tpl_flat - tpl_flat.mean()
-    num = np.dot(i_c, t_c)
-    denom = np.sqrt(np.dot(i_c, i_c) * np.dot(t_c, t_c)) + 1e-12
-    return float(num / denom)
+def _match_score(img: np.ndarray, tpl: np.ndarray, col_mask: np.ndarray | None = None,
+                 pixel_tol: float = PIXEL_TOL) -> float:
+    """
+    Fraction of pixels where |img - tpl| < pixel_tol, evaluated over col_mask.
+    Returns value in [0, 1].
+    """
+    diff = np.abs(img - tpl)
+    if col_mask is not None:
+        diff = diff[:, col_mask]
+    return (diff < pixel_tol).mean()
 
 
-def _load_gray_rgb(path: Path, size: int) -> np.ndarray:
-    """Load image as float64 [0,1] RGB."""
-    img = Image.open(path).convert("RGB").resize((size, size), Image.LANCZOS)
-    return np.array(img, dtype=np.float64) / 255.0
-
-
-# ---------------------------------------------------------------------------
-# Main classifier
-# ---------------------------------------------------------------------------
 class NewsLayoutClassifier:
-    """
-    Template-based news layout classifier.
-
-    Classifies a news broadcast frame into:
-      - "left"  : anchor on LEFT  (UI frame on RIGHT)
-      - "right" : anchor on RIGHT (UI frame on LEFT)
-      - "other" : no fixed studio frame detected
-    """
-
     def __init__(
         self,
         size: int = DEFAULT_SIZE,
-        tolerance_margin: float = TOLERANCE_MARGIN,
-        min_template_match: float = MIN_TPL_MATCH,
+        pixel_tol: float = PIXEL_TOL,
+        min_match: float = MIN_MATCH,
+        active_cols: list[int] | None = None,
     ):
         self.size = size
-        self.tolerance_margin = tolerance_margin
-        self.min_template_match = min_template_match
+        self.pixel_tol = pixel_tol
+        self.min_match = min_match
+        self._active_cols = active_cols
+        self._col_mask: np.ndarray | None = None
         self._tpl_left:  np.ndarray | None = None
         self._tpl_right: np.ndarray | None = None
-        self._tpl_other: np.ndarray | None = None
         self._trained = False
-        logger.debug(f"Classifier ready (size={size})")
+
+        if active_cols is not None:
+            self._col_mask = np.zeros(size, dtype=bool)
+            self._col_mask[active_cols] = True
+
+        logger.debug(f"Classifier ready (size={size}, px_tol={pixel_tol}, "
+                     f"min_match={min_match}, cols={active_cols})")
 
     # ------------------------------------------------------------------
     # Training
@@ -80,141 +67,92 @@ class NewsLayoutClassifier:
         self,
         left_dir: Path,
         right_dir: Path,
-        other_dir: Path,
+        other_dir: Path | None = None,
     ) -> dict[str, int]:
-        """
-        Build class templates from labelled image directories.
+        def load_dir(d: Path) -> np.ndarray:
+            files = [f for f in d.iterdir()
+                     if f.suffix.lower() in {".jpg", ".jpeg", ".png"}]
+            imgs = [np.array(Image.open(f).convert("RGB").resize(
+                (self.size, self.size), Image.LANCZOS), dtype=np.float64) / 255.0
+                    for f in files]
+            return np.array(imgs)
 
-        Parameters
-        ----------
-        left_dir, right_dir, other_dir : Path
-            Directories containing .jpg/.png images for each class.
-
-        Returns
-        -------
-        dict with keys 'left', 'right', 'other' mapping to image counts.
-        """
-        def load_dir(d: Path) -> list[np.ndarray]:
-            files = [f for f in d.iterdir() if f.suffix.lower() in {".jpg", ".jpeg", ".png"}]
-            return [_load_gray_rgb(f, self.size) for f in files]
-
-        logger.info(f"Training from: L={left_dir} R={right_dir} O={other_dir}")
+        logger.info(f"Training from: L={left_dir} R={right_dir}")
         L = load_dir(left_dir)
         R = load_dir(right_dir)
-        O = load_dir(other_dir)
-
-        self._tpl_left  = np.array(L).mean(axis=0)
-        self._tpl_right = np.array(R).mean(axis=0)
-        self._tpl_other = np.array(O).mean(axis=0)
+        self._tpl_left  = L.mean(axis=0)
+        self._tpl_right = R.mean(axis=0)
         self._trained = True
-
-        counts = {"left": len(L), "right": len(R), "other": len(O)}
-        logger.info(f"Training done: {counts}")
-        return counts
+        return {"left": len(L), "right": len(R)}
 
     def train_from_lists(
         self,
         left_paths: list[Path],
         right_paths: list[Path],
-        other_paths: list[Path],
+        other_paths: list[Path] | None = None,
     ) -> dict[str, int]:
-        """Build templates from explicit lists of image paths."""
-        def from_paths(paths: list[Path]) -> np.ndarray:
-            return np.array([_load_gray_rgb(p, self.size) for p in paths])
-
-        L = from_paths(left_paths)
-        R = from_paths(right_paths)
-        O = from_paths(other_paths)
+        L = np.array([
+            np.array(Image.open(p).convert("RGB").resize((self.size, self.size), Image.LANCZOS),
+                     dtype=np.float64) / 255.0 for p in left_paths
+        ])
+        R = np.array([
+            np.array(Image.open(p).convert("RGB").resize((self.size, self.size), Image.LANCZOS),
+                     dtype=np.float64) / 255.0 for p in right_paths
+        ])
         self._tpl_left  = L.mean(axis=0)
         self._tpl_right = R.mean(axis=0)
-        self._tpl_other = O.mean(axis=0)
         self._trained = True
-        counts = {"left": len(L), "right": len(R), "other": len(O)}
-        logger.info(f"Training done: {counts}")
-        return counts
+        return {"left": len(L), "right": len(R)}
 
     # ------------------------------------------------------------------
     # Classification
     # ------------------------------------------------------------------
     def classify(self, path: Path | str) -> Literal["left", "right", "other"]:
-        """
-        Classify a single image.
-
-        Raises
-        ------
-        RuntimeError if classifier has not been trained.
-        """
         if not self._trained:
             raise RuntimeError("Classifier not trained. Call train() first.")
 
         path = Path(path)
-        img = _load_gray_rgb(path, self.size)
+        img = (np.array(Image.open(path).convert("RGB").resize(
+            (self.size, self.size), Image.LANCZOS), dtype=np.float64) / 255.0)
 
-        sl = _corr(img.reshape(-1), self._tpl_left.reshape(-1))
-        sr = _corr(img.reshape(-1), self._tpl_right.reshape(-1))
-        so = _corr(img.reshape(-1), self._tpl_other.reshape(-1))
+        sc_L = _match_score(img, self._tpl_left,  self._col_mask, self.pixel_tol)
+        sc_R = _match_score(img, self._tpl_right, self._col_mask, self.pixel_tol)
 
-        scores = {"left": sl, "right": sr, "other": so}
-        best_label = max(scores, key=scores.get)
-        best_score = scores[best_label]
-        sorted_scores = sorted(scores.values(), reverse=True)
+        logger.debug(f"{path.name}: match_L={sc_L:.3f} match_R={sc_R:.3f}")
 
-        logger.debug(
-            f"{path.name}: left={sl:.3f} right={sr:.3f} other={so:.3f} -> {best_label}"
-        )
-
-        # Tolerance: if the gap between best and 2nd-best is too small -> "other"
-        if len(sorted_scores) >= 2:
-            gap = sorted_scores[0] - sorted_scores[1]
-            if gap < self.tolerance_margin:
-                return "other"
-
-        # Absolute threshold
-        if best_score < self.min_template_match:
+        if sc_L < self.min_match and sc_R < self.min_match:
             return "other"
-
-        return best_label
+        return "left" if sc_L > sc_R else "right"
 
     def classify_batch(
         self, paths: list[Path | str]
     ) -> list[Literal["left", "right", "other"]]:
-        """Classify a list of image paths."""
         return [self.classify(p) for p in paths]
 
     def classify_with_scores(
         self, path: Path | str
     ) -> tuple[Literal["left", "right", "other"], dict[str, float]]:
-        """Classify and also return raw template match scores."""
         if not self._trained:
             raise RuntimeError("Classifier not trained.")
-
         path = Path(path)
-        img = _load_gray_rgb(path, self.size)
-        sl = _corr(img.reshape(-1), self._tpl_left.reshape(-1))
-        sr = _corr(img.reshape(-1), self._tpl_right.reshape(-1))
-        so = _corr(img.reshape(-1), self._tpl_other.reshape(-1))
-        scores = {"left": sl, "right": sr, "other": so}
+        img = (np.array(Image.open(path).convert("RGB").resize(
+            (self.size, self.size), Image.LANCZOS), dtype=np.float64) / 255.0)
+        sc_L = _match_score(img, self._tpl_left,  self._col_mask, self.pixel_tol)
+        sc_R = _match_score(img, self._tpl_right, self._col_mask, self.pixel_tol)
+        scores = {"left": sc_L, "right": sc_R}
         label = self.classify(path)
         return label, scores
 
     # ------------------------------------------------------------------
-    # Save / load templates
+    # Save / load
     # ------------------------------------------------------------------
     def save_templates(self, path: Path) -> None:
-        """Save templates to a .npz file."""
-        np.savez(
-            path,
-            tpl_left=self._tpl_left,
-            tpl_right=self._tpl_right,
-            tpl_other=self._tpl_other,
-        )
+        np.savez(path, tpl_left=self._tpl_left, tpl_right=self._tpl_right)
         logger.info(f"Templates saved to {path}")
 
     def load_templates(self, path: Path) -> None:
-        """Load pre-trained templates from .npz file."""
         data = np.load(path)
         self._tpl_left  = data["tpl_left"]
         self._tpl_right = data["tpl_right"]
-        self._tpl_other = data["tpl_other"]
         self._trained = True
         logger.info(f"Templates loaded from {path}")
