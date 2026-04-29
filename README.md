@@ -114,7 +114,7 @@ news-layout train left_dir right_dir --out my_templates.npz
 
 ## Disclaimer
 
-This project is released for **learning and research purposes only**.
+This project is released under **GPL-3.0-or-later** license.
 
 - Templates and model were trained solely on publicly available YouTube screenshots
 - Accuracy figures are specific to this dataset and do not guarantee generalization to other data

@@ -7,7 +7,7 @@ name = "news-layout-classifier"
 version = "1.0.0"
 description = "YouTube news layout classifier (left/right/other) using pixel-wise match ratio"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-or-later"}
 requires-python = ">=3.8"
 dependencies = ["numpy", "Pillow"]
 
