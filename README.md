@@ -11,11 +11,11 @@
 
 PTS Sign Language News live stream captures fall into three common layouts:
 
-| Label    | Description                                                     | Example (random)                           |
-|----------|----------------------------------------------------------------|--------------------------------------------|
-| `left`  | Anchor on the **left**, AI assistant (sign language interpreter) on the **right** | `000008_245.jpg` (left/ anchor, right/ AI) |
-| `right` | Anchor on the **right**, AI assistant on the **left**          | `000003_90.jpg` (right/ anchor, left/ AI)  |
-| `other` | News main frame — no anchor in the standard layout (weather graphics, motion backgrounds, full-screen anchors) | `000064_802.jpg` (no standard layout)      |
+| Label    | Description                                                     | Example                                                   |
+|----------|----------------------------------------------------------------|-----------------------------------------------------------|
+| `left`  | Anchor on the **left**, AI assistant (sign language interpreter) on the **right** | ![left](examples/000008_245.jpg) |
+| `right` | Anchor on the **right**, AI assistant on the **left**          | ![right](examples/000003_90.jpg) |
+| `other` | News main frame — no anchor in the standard layout (weather graphics, motion backgrounds, full-screen anchors) | ![other](examples/000064_802.jpg) |
 
 **Use cases:** literature organization, video analysis, preprocessing for downstream automation tasks.
 
