@@ -119,5 +119,6 @@ This project is released for **learning and research purposes only**.
 - Templates and model were trained solely on publicly available YouTube screenshots
 - Accuracy figures are specific to this dataset and do not guarantee generalization to other data
 - This tool is not affiliated with, endorsed by, or representative of PTS (Public Television Service) or any associated institutions
+- **This project makes no representations and accepts no responsibility for any disputes, products, or consequences arising from the use or misuse of this project or any derivative works**
 - When citing in academic papers, teaching materials, or any non-commercial use, please reference this repository:
   > https://github.com/miles0428/news-layout-classifier
