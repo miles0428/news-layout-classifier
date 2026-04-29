@@ -91,6 +91,10 @@ news-layout-classifier/
 │   ├── __main__.py                    # CLI entry point
 │   └── templates/
 │       └── news_layout_templates.npz   # pre-trained templates (189 left + 215 right images)
+├── examples/
+│   ├── 000008_245.jpg    # left example
+│   ├── 000003_90.jpg     # right example
+│   └── 000064_802.jpg    # other example
 └── README.md
 ```
 
